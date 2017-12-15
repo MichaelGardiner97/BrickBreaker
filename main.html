@@ -1,0 +1,866 @@
+<!doctype html> 
+<html> 
+<head> 
+	<meta charset="UTF-8" />
+	<title>Brick Breaker</title>
+	<script type="text/javascript" src="js/phaser.min.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<script type="text/javascript">
+
+    var Breaker = Breaker || {};
+
+    // Used for keyboard commands
+    var cursors;
+
+// GAMEPLAY SETUP
+    
+    // Paddle
+    var paddles;
+    var myPaddle;
+   
+    // Balls
+    var balls;
+    var myBall;
+    var ballCount;
+    
+    // Bricks
+    var bricks;  
+    var brickCount;
+    
+    // Asteroids
+    var asteroids;
+    var numOfAsteroids;
+    var sendingAsteroids;
+    var asteroidTimer;
+    var asteroidLoop;
+
+    // Gameplay
+    var gameOver;
+    
+    var leftDiff;
+    var rightDiff;
+   
+    var score;
+    var lives;
+    var level;
+    
+    var isPlaying; // Boolean to check whether user is currently playing
+    var ballOnPaddle; // Boolean to check if ball is on the paddle
+    
+    var xVel;
+    var yVel;
+
+    var brickHitX;
+    var brickHitY;
+    
+    // Text
+    var titleText;
+    var highText;
+    var scoreText;
+    var livesText;
+    var levelText;
+    
+// POWER-UPs & SPECIALS
+    var specials;
+    var specialsArray = ["aid", "spike", "multi", "long", "short", "lasers"];
+    var specialChosen;
+    var lasers;
+    var lasersEnabled; // Boolean to check whether user currently has lasers
+    var multiBalls;
+    var isLong; // Boolean to check whether paddle is currently is "long" state
+    var isShort; // Boolean to check whether paddle is currently is "short" state
+
+    // Phaser.CANVAS instead of Phaser.AUTO so that it can work on Safari
+    Breaker.game = new Phaser.Game(800, 600, Phaser.CANVAS, 'gameArea');
+    var game = Breaker.game;
+
+    Breaker.Boot = function() {
+    };
+
+    Breaker.Boot.prototype = {
+        preload: function() {
+            game.scale.scaleMode = Phaser.ScaleManager.SHOW_ALL;
+            game.scale.pageAlignHorizontally = true;
+            game.scale.pageAlignVertically = true;
+            game.load.image('ground', 'assets/platform.png');
+            game.load.image('background', 'assets/background.jpg');
+            game.load.image('paddle', 'assets/paddle.png');
+            game.load.image('ball', 'assets/ball.png');
+            game.load.image('mBall', 'assets/mBall.png');
+            game.load.image('orangeBrick', 'assets/orange.png');
+            game.load.image('purpleBrick', 'assets/purple.png');
+            game.load.image('redBrick', 'assets/red.png');
+            game.load.image('cyanBrick', 'assets/cyan.png');
+            game.load.image('blueBrick', 'assets/blue.png');
+            game.load.image('pinkBrick', 'assets/pink.png');
+            game.load.image('spike', 'assets/spike.png');
+            game.load.image('asteroid', 'assets/asteroid.png');
+            game.load.image('aid', 'assets/firstaid.png');
+            game.load.image('multi', 'assets/multi.png');
+            game.load.image('long', 'assets/long.png');
+            game.load.image('short', 'assets/short.png');
+            game.load.image('lasers', 'assets/lasers.png');
+            game.load.image('laser', 'assets/laser.png');
+            game.load.image('fast', 'assets/fast.png');
+            game.load.image('slow', 'assets/slow.png');
+        },
+
+        create: function() {
+
+            // Set up boolean variables used throughout game
+            gameOver = false;
+            game.paused = false;
+            isPlaying = false;
+            lasersEnabled = false;
+            ballOnPaddle = true;
+            isLong = false;
+            isShort = false;
+            sendingAsteroids = false;
+
+            // Start and enable physics in the game world
+            game.physics.startSystem(Phaser.Physics.ARCADE);
+
+            // Let the ball go "out of bounds" through the bottom of the world
+            game.physics.arcade.checkCollision.down = false;
+
+            // Make sure game window updates with browser size
+            game.scale.refresh();
+
+            game.add.group().create(0, 0, 'background').scale.setTo(0.45, 0.5);
+
+        // CREATE GROUPS
+            
+            // Bricks
+            bricks = game.add.group();
+            bricks.enableBody = true;
+            bricks.physicsBodyType = Phaser.Physics.ARCADE;      
+
+            // Specials
+            specials = game.add.group();
+            specials.enableBody = true;
+
+            // Asteroids 
+            asteroids = game.add.group();
+            asteroids.enableBody = true;
+
+            // Paddle
+            paddles = game.add.group()
+            paddles.enableBody = true;
+            myPaddle = paddles.create(game.world.centerX-70, 500, 'paddle');
+            game.physics.enable(myPaddle, Phaser.Physics.ARCADE);
+            myPaddle.body.collideWorldBounds = true;
+            myPaddle.body.immovable = true;
+
+            // Balls
+            balls = game.add.group();
+            balls.enableBody = true;
+            myBall = balls.create(game.world.centerX, myPaddle.y - 10, 'ball');
+            myBall.anchor.set(0.5);
+            myBall.checkWorldBounds = true;
+            game.physics.enable(myBall, Phaser.Physics.ARCADE);
+            myBall.body.collideWorldBounds = true;
+            myBall.body.bounce.set(1);
+            // Check when ball goes out of bounds and call function
+            myBall.events.onOutOfBounds.add(outOfBounds, this);
+            ballCount = 1;
+
+            // Multi-ball
+            multiBalls = game.add.group();
+            multiBalls.enableBody = true;
+
+            // Lasers
+            lasers = game.add.group();
+            lasers.enableBody = true;
+
+            // Gameplay
+            score = 0;
+            lives = 3;
+            level = 1;
+            
+            xVel = 200;
+            yVel = -250;
+           
+            leftDiff = 50;
+            rightDiff = 90;
+            
+            asteroidTimer = 15000;
+            numOfAsteroids = 1;
+            
+            // Text
+            scoreText = game.add.text(16, 16, 'Score: 0', { fontSize: '32px', fill: '#FFF' });
+
+            livesText = game.add.text(game.world.width-140, 16, 'Lives: '+lives, { fontSize: '32px', fill: '#FFF' });
+
+            levelText = game.add.text((game.world.width/2) - 75, 16, 'Level: '+level, { fontSize: '32px', fill: '#FFF' });
+
+            titleText = game.add.text((game.world.width/2) - 130, 60, 'Press screen to start', { fontSize: '32px', fill: '#FFF' });
+            
+            highText = game.add.text(175, 100, 'Press "h" to check your high score!', { fontSize: '32px', fill: '#FFF' });
+
+            // Release ball when the user clicks the screen
+            game.input.onDown.add(releaseBall, this);
+
+            // Controls.
+            cursors = game.input.keyboard.createCursorKeys();
+            
+            // Set up first level
+            newLevel();
+        },
+
+        update: function() {
+            
+            if (cursors.left.isDown) {
+                //  Move to the left
+                myPaddle.body.velocity.x = -400;
+            }
+            else if (cursors.right.isDown) {
+                //  Move to the right
+                myPaddle.body.velocity.x = 400;
+            } 
+            else {
+                // If nothing is being clicked then stop movement
+                myPaddle.body.velocity.x = 0;
+            }
+
+            if (ballOnPaddle) {
+                myBall.body.x = myPaddle.x+55;
+            } else {
+                // Call hitPaddle when ball and paddle collide
+                game.physics.arcade.collide(myBall, myPaddle, hitPaddle);
+                // Call hitBrickByBall when normal ball and brick collide
+                game.physics.arcade.collide(balls, bricks, hitBrickByBall);
+                // Call specialCollected when paddle and special collide
+                game.physics.arcade.collide(specials, myPaddle, specialCollected);
+                game.physics.arcade.collide(multiBalls, myPaddle);
+                // Call hitBrickByMultiBall when multi-ball and brick collide
+                game.physics.arcade.collide(multiBalls, bricks, hitBrickByMultiBall);
+                // Call hitByAsteroid when asteroid and paddle collide
+                game.physics.arcade.overlap(asteroids, myPaddle, hitByAsteroid);
+                // Call hitBrickByLaser when laser and brick collide
+                game.physics.arcade.collide(lasers, bricks, hitBrickByLaser);
+            }
+            if (gameOver) {
+                // Allow user to restart when the game is over
+                scoreText.text = "Press 'R' to restart";
+            }
+            
+        }
+    }
+
+    game.state.add('Boot', Breaker.Boot);
+    game.state.start('Boot');
+
+    window.onkeydown = function(event) {  
+        if (gameOver) {
+            // RESTART
+            if (event.keyCode == 82) { 
+                game.state.start('Boot');
+            }
+        } else {
+            
+            if (event.keyCode == 72) {
+                var name = prompt("Please enter your name to find your high score", "");
+                if (window.localStorage.getItem(name) != null) { 
+                    alert("Your high score is: " + window.localStorage.getItem(name));
+                } else {
+                    alert("You do not have a high score yet, play the game and save your name!");
+                }
+            }
+            
+            if (!isPlaying) {
+                // RESUME
+                if (event.keyCode == 32){ 
+                    game.paused = false;
+                    isPlaying = true;
+                    scoreText.text = "Score: " + score;
+                    sendingAsteroids = true;
+                }
+            } else {
+                // PAUSE
+                if (event.keyCode == 32){
+                    game.paused = true;
+                    isPlaying = false;
+                    scoreText.text = "Paused";
+                    sendingAsteroids = false;
+                }
+            }
+        }
+    }
+    
+    function releaseBall () {
+
+        // If the ball is on the paddle (so the user is not currently playing - send the ball off with xVel and yVel)
+        if (ballOnPaddle) {
+            // Start asteroid loop 
+            sendingAsteroids = true
+            asteroidLoop = game.time.events.loop(asteroidTimer, sendAsteroids, this);
+            ballOnPaddle = false;
+            myBall.body.velocity.set(xVel, yVel);
+            titleText.destroy();
+            highText.destroy();
+            isPlaying = true;
+        } else {
+            // If the user clicks the screen during gameplay and lasers are enabled, call the shootLaser function
+            if (isPlaying && lasersEnabled) {
+                shootLaser();
+            }
+        }
+    }
+
+    /* 
+    Reduces ball count by one
+    If ball count is 0 call liveLost() function
+    */
+    function outOfBounds () {
+
+        ballCount--;
+        console.log("ball count: " + ballCount);
+
+        if (isPlaying) {
+            if (ballCount == 0) {
+                isPlaying = false;
+                liveLost();  
+            }   
+        }
+    }
+
+    /* 
+    Bounce ball of paddle depending on where on the paddle the ball hits
+    */
+    function hitPaddle (ball, paddle) {
+
+        var diff = ball.x - paddle.x;
+
+        if (diff < leftDiff) {
+            xVel += 5 * (Math.floor((Math.random() * 10) + 1));
+            ball.body.velocity.set(-xVel, yVel);
+        } else if (diff > rightDiff) {
+            xVel += 5 * (Math.floor((Math.random() * 10) + 1));
+            ball.body.velocity.set(xVel, yVel);
+        } else {
+            ball.body.velocity.x -= 5 * (Math.floor((Math.random() * 80) + 1));
+        }
+        myPaddle.body.velocity.set(0);
+    }
+
+    /*
+    Brick count decreases by one
+    Score increases
+    */
+    function hitBrick() {
+        brickCount--;
+        console.log("brick count: " + brickCount);
+        score += 10;
+        scoreText.text = 'Score: ' + score;
+
+        if (brickCount == 0) { 
+            // If brick count is 0 move on to the next level
+            level++;
+            console.log("new level: " + level);
+            levelText.text = "Level: " + level;
+
+            if (level < 5) {
+                score += 100;
+            } else if (level < 10 && level > 5) {
+                score += 500;
+            } else if (level < 20 && level > 10) {
+                score += 1000;
+            }
+
+            scoreText.text = 'Score: ' + score; 
+
+            nextLevel();
+
+        } else {
+
+            if (isPlaying && !ballOnPaddle) {
+                if (score % 80 == 0) {
+                    var num = Math.floor((Math.random() * 6) + 0);
+                    specialChosen = specialsArray[num];
+                    var special = specials.create(brickHitX, brickHitY, specialChosen);
+                    special.body.gravity.y = 75;
+                }   
+            }   
+        }
+    }
+
+    /*
+    Kill brick and laser if they collide and call hitBrick function
+    */
+    function hitBrickByLaser(laser, brick) {
+        brick.kill();
+        laser.kill();
+        brickHitX = brick.x + 15;
+        brickHitY = brick.y;
+        hitBrick();
+    }    
+
+    /*
+    Kill brick and call hitBrick function
+    */
+    function hitBrickByBall (ball, brick) {
+        brick.kill();
+        brickHitX = brick.x + 15;
+        brickHitY = brick.y;
+        hitBrick();
+    }
+
+    /*
+    Kill brick and call hitBrick function
+    */
+    function hitBrickByMultiBall (ball, brick) {
+        brick.kill();
+        brickHitX = brick.x + 15;
+        brickHitY = brick.y;
+        hitBrick();
+    }
+
+    /*
+    Set up the next level:
+    -Destroy groups
+    -Reset paddle and ball
+    -Add bricks for new level
+    */
+    function nextLevel() {
+        console.log("next level beginning...");
+        isPlaying = false;
+        sendingAsteroids = false;
+        ballOnPaddle = true;
+        multiBalls.callAll('kill');
+        lasers.callAll('kill');
+        specials.callAll('kill');
+        lasersEnabled = false;
+        myBall.body.velocity.set(0);
+        myBall.reset(myPaddle.body.x + 16, myPaddle.y - 10);
+        myPaddle.reset(game.world.centerX-70, 500);
+        ballCount = 1;
+        xVel = 200;
+        yVel = -250;
+        ballCount = 1; 
+        newLevel();
+    }
+
+    /*
+    Send numOfAsteroids at a random x value at an interval of asteroidLoop (which changes throughout the game)
+    */
+    function sendAsteroids() {
+        if (sendingAsteroids){
+            console.log("Asteroid Sent");
+            for (var i = 0; i < numOfAsteroids; i++) {
+                var x = Math.floor((Math.random() * game.world.width-15) + 15);
+                var asteroid = asteroids.create(x, -50, 'asteroid');
+                asteroid.body.gravity.y = 20;
+            }
+        }
+    }
+
+    /*
+    When paddle is hit with asteroid, take a life away and kill the asteroid
+    */
+    function hitByAsteroid(paddle, asteroid) {
+        asteroid.kill();
+        liveLost();
+    }
+
+    /*
+    Reduces live count by one
+    If live count is 0 end the game and give them the option to restart
+    */
+    function liveLost() {
+        console.log("live lost");
+        lives--;
+        livesText.text = "Lives: " + lives;
+
+        if (lives == 0) {
+            // Get rid of everything and set gameOver to true, asking to restart
+            gameOver = true;
+            balls.removeAll(true);
+            myPaddle.kill();
+            bricks.removeAll(true);
+            asteroids.removeAll(true);
+            game.time.events.remove(asteroidLoop);
+            var name = prompt("Please enter your name to save your high score", "");
+            window.localStorage.setItem(name, score);
+        } else {
+            if (!isPlaying) {
+                // Reset the ball and paddle positions and get ready for next live
+                ballOnPaddle = true;
+                isPlaying = false;
+                sendingAsteroids = false;
+                if (isLong) {
+                    myBall.reset(myPaddle.body.x + 41, myPaddle.y - 10);
+                } else if (isShort) {
+                    myBall.reset(myPaddle.body.x, myPaddle.y - 10);
+                } else {
+                    myBall.reset(myPaddle.body.x + 16, myPaddle.y - 10);
+                }
+                xVel = 200;
+                yVel = -250;
+                ballCount = 1;   
+            }
+        }
+    }
+
+    /* 
+    Call special function based on the special that the user receives
+    */
+    function specialCollected(paddle, special) {
+        special.kill();
+        switch (special.key) {
+            case "aid":
+                aidReceived();
+                break;
+            case "spike":
+                spikeHit();
+                break;
+            case "multi":
+                createMultiBall();
+                break;
+            case "long":
+                makePaddleLong();
+                break;
+            case "short":
+                makePaddleShort();
+                break;
+            case "lasers":
+                enableLasers();
+                break;
+            default: 
+                break;
+        }
+    }
+    
+    // Enable Lasers
+    function enableLasers() {
+        lasersEnabled = true;
+        game.time.events.add(5000, function () {
+            lasersEnabled = false;
+        });
+    }
+
+    // Shoot Lasers straight up
+    function shootLaser() {
+        var laser = lasers.create(myPaddle.x+73, myPaddle.y-55, 'laser');
+        laser.body.velocity.set(0, -200);
+    }
+
+    /*
+    When aid is received increase live count by one
+    */
+    function aidReceived() {
+        console.log("AID")
+        lives++;
+        livesText.text = "Lives: "+lives;
+    }
+
+    /*
+    When spike is received decrease live count by one
+    */
+    function spikeHit() {
+        console.log("SPIKE")
+        liveLost();
+    }
+
+    /*
+    When multi-ball is received, create 3 more balls with bounce of 1
+    */
+    function createMultiBall() {
+        console.log("MULTI");
+        ballCount += 3;
+        console.log("ball count: " + ballCount);
+        for (var i = 1; i < 4; i++) {
+            var x = Math.floor((Math.random() * game.world.width-15) + 15);
+            var y = Math.floor((Math.random() * game.world.height-200) + 50);
+            var newBall = multiBalls.create(x, y, 'mBall');
+            newBall.checkWorldBounds = true;
+            game.physics.enable(newBall, Phaser.Physics.ARCADE);
+            newBall.body.collideWorldBounds = true;
+            newBall.body.bounce.set(1);
+            newBall.events.onOutOfBounds.add(outOfBounds, this);
+            newBall.body.velocity.set(xVel, yVel);
+        }
+    }
+
+    /*
+    Increases paddle length when this special is received
+    */
+    function makePaddleLong() {
+        console.log("LONG");
+        isLong = true;
+        myPaddle.width += 50;
+        leftDiff = 75;
+        rightDiff = 115;
+        game.time.events.add(10000, function () {
+            isLong = false;
+            myPaddle.width -= 50;
+            leftDiff = 50;
+            rightDiff = 90;
+        });
+    }
+
+    /*
+    Decreases paddle length when this special is received
+    */
+    function makePaddleShort() {
+        console.log("SHORT");
+        isShort = true;
+        myPaddle.width -= 50;
+        leftDiff = 25;
+        rightDiff = 65;
+        game.time.events.add(10000, function () {
+            isShort = false;
+            myPaddle.width += 50;
+            leftDiff = 50;
+            rightDiff = 90;
+        });
+    }
+
+    function newLevel() {
+        if (level == 1) {
+            console.log("starting level 1");
+            brickCount = 7;
+            console.log("total brick count: " + brickCount);
+            for (var i = 0; i < 7; i++) {
+                var brick = bricks.create((i*100) + 65, 150, 'orangeBrick');
+                brick.body.immovable = true;
+            }
+        }
+        if (level == 2) {
+            console.log("starting level 2");
+            brickCount = 10;
+            console.log("total brick count: " + brickCount);
+            for (var i = 0; i < 10; i++) {
+                var brick = bricks.create((i*75) + 30, 150, 'orangeBrick');
+                brick.body.immovable = true;
+            }
+        }
+        if (level == 3) {
+            console.log("starting level 3");
+            brickCount = 30;
+            for (var i = 0; i < 10; i++) {
+                var brick = bricks.create((i*75) + 30, (i * 20) + 150, 'orangeBrick');
+                brick.body.immovable = true;
+            }
+        }
+        if (level == 4) {
+            console.log("starting level 4");
+            brickCount = 14;
+            console.log("total brick count: " + brickCount);
+            numOfAsteroids = 2;
+            for (var i = 0; i < 7; i++) {
+                var brick = bricks.create((i*100) + 65, 200, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((i*100) + 65, 150, 'purpleBrick');
+                brick2.body.immovable = true;
+            }
+        }
+        if (level == 5) {
+            console.log("starting level 5");
+            brickCount = 20;
+            console.log("total brick count: " + brickCount);
+            numOfAsteroids = 2;
+            for (var i = 0; i < 10; i++) {
+                var brick = bricks.create((i*75) + 30, 200, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((i*75) + 30, 150, 'purpleBrick');
+                brick2.body.immovable = true;
+            }
+        }
+        if (level == 6) {
+            console.log("starting level 6");
+            brickCount = 20;
+            console.log("total brick count: " + brickCount);
+            numOfAsteroids = 2;
+            for (var i = 0; i < 10; i++) {
+                var brick = bricks.create((game.world.width-95) - (i*75), (i * 20) + 150, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((i*75) + 30, (i * 20) + 150, 'purpleBrick');
+                brick2.body.immovable = true;
+            }
+        }
+        if (level == 7) {
+            console.log("starting level 7");
+            brickCount = 21;
+            console.log("total brick count: " + brickCount);
+            for (var i = 0; i < 7; i++) {
+                var brick = bricks.create((i*100) + 65, 250, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((i*100) + 65, 200, 'purpleBrick');
+                brick2.body.immovable = true;
+                var brick3 = bricks.create((i*100) + 65, 150, 'redBrick');
+                brick3.body.immovable = true;
+            }
+        }
+        if (level == 8) {
+            console.log("starting level 8");
+            brickCount = 30;
+            console.log("total brick count: " + brickCount);
+            for (var i = 0; i < 10; i++) {
+                var brick = bricks.create((i*75) + 30, 250, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((i*75) + 30, 200, 'purpleBrick');
+                brick2.body.immovable = true;
+                var brick3 = bricks.create((i*75) + 30, 150, 'redBrick');
+                brick3.body.immovable = true;
+            }
+        }
+        if (level == 9) {
+            console.log("starting level 9");
+            brickCount = 28;
+            console.log("total brick count: " + brickCount);
+            for (var i = 0; i < 10; i++) {
+                var brick = bricks.create((i*75) + 30, (i * 20) + 120, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((game.world.width-95) - (i*75), (i * 20) + 120, 'purpleBrick');
+                brick2.body.immovable = true;
+                if (i != 4 && i != 5) {
+                    console.log(i);
+                    var brick3 = bricks.create((i*75) + 30, 210, 'redBrick');
+                    brick3.body.immovable = true;
+                }
+            }
+        }
+        if (level == 10) {
+            console.log("starting level 10");
+            brickCount = 28;
+            asteroidTimer = 13000;
+            console.log("total brick count: " + brickCount);
+            for (var i = 0; i < 7; i++) {
+                var brick = bricks.create((i*100) + 65, 300, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((i*100) + 65, 250, 'purpleBrick');
+                brick2.body.immovable = true;
+                var brick3 = bricks.create((i*100) + 65, 200, 'redBrick');
+                brick3.body.immovable = true;
+                var brick4 = bricks.create((i*100) + 65, 150, 'cyanBrick');
+                brick4.body.immovable = true;
+            }
+        }
+        if (level == 11) {
+            console.log("starting level 11");
+            numOfAsteroids = 3;
+            brickCount = 40;
+            console.log("total brick count: " + brickCount);
+            for (var i = 0; i < 10; i++) {
+                var brick = bricks.create((i*75) + 30, 300, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((i*75) + 30, 250, 'purpleBrick');
+                brick2.body.immovable = true;
+                var brick3 = bricks.create((i*75) + 30, 200, 'redBrick');
+                brick3.body.immovable = true;
+                var brick4 = bricks.create((i*75) + 30, 150, 'cyanBrick');
+                brick4.body.immovable = true;
+            }
+        }
+        if (level == 12) {
+            console.log("starting level 12");
+            numOfAsteroids = 3;
+            brickCount = 36;
+            console.log("total brick count: " + brickCount);
+            for (var i = 0; i < 10; i++) {
+                var brick = bricks.create((i*75) + 30, (i * 25) + 150, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((game.world.width-95) - (i*75), (i * 25) + 150, 'purpleBrick');
+                brick2.body.immovable = true;
+                if (i != 4 && i != 5) {
+                    var brick3 = bricks.create((i*75) + 30, 250, 'redBrick');
+                    brick3.body.immovable = true;
+                }
+                if (i != 4 && i != 5) {
+                    var brick4 = bricks.create((i*75) + 30, 275, 'cyanBrick');
+                    brick4.body.immovable = true;
+                }
+            }
+        }
+        if (level == 13) {
+            console.log("starting level 13");
+            brickCount = 35;
+            console.log("total brick count: " + brickCount);
+            for (var i = 0; i < 7; i++) {
+                var brick = bricks.create((i*100) + 65, 275, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((i*100) + 65, 225, 'purpleBrick');
+                brick2.body.immovable = true;
+                var brick3 = bricks.create((i*100) + 65, 175, 'redBrick');
+                brick3.body.immovable = true;
+                var brick4 = bricks.create((i*100) + 65, 125, 'cyanBrick');
+                brick4.body.immovable = true;
+                var brick5 = bricks.create((i*100) + 65, 325, 'blueBrick');
+                brick5.body.immovable = true;
+            }
+        }
+        if (level == 14) {
+            console.log("starting level 14");
+            brickCount = 50;
+            asteroidTimer = 10000;
+            console.log("total brick count: " + brickCount);
+            for (var i = 0; i < 10; i++) {
+                var brick = bricks.create((i*75) + 30, 275, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((i*75) + 30, 225, 'purpleBrick');
+                brick2.body.immovable = true;
+                var brick3 = bricks.create((i*75) + 30, 175, 'redBrick');
+                brick3.body.immovable = true;
+                var brick4 = bricks.create((i*75) + 30, 125, 'cyanBrick');
+                brick4.body.immovable = true;
+                var brick5 = bricks.create((i*75) + 30, 325, 'blueBrick');
+                brick5.body.immovable = true;
+            }
+        }
+        if (level == 15) {
+            console.log("starting level 15");
+            brickCount = 46;
+            console.log("total brick count: " + brickCount);
+            for (var i = 0; i < 10; i++) {
+                var brick = bricks.create((i*75) + 30, (i * 25) + 150, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((game.world.width-95) - (i*75), (i * 25) + 150, 'purpleBrick');
+                brick2.body.immovable = true;
+                if (i != 4 && i != 5) {
+                    var brick3 = bricks.create((i*75) + 30, 250, 'redBrick');
+                    brick3.body.immovable = true;
+                }
+                if (i != 4 && i != 5) {
+                    var brick4 = bricks.create((i*75) + 30, 275, 'cyanBrick');
+                    brick4.body.immovable = true;
+                }
+                var brick5 = bricks.create((i*75) + 30, 120, 'blueBrick');
+                brick5.body.immovable = true;
+            }
+        }
+        if (level == 16) {
+            console.log("starting level 16");
+            brickCount = 56;
+            console.log("total brick count: " + brickCount);
+            for (var i = 0; i < 10; i++) {
+                var brick = bricks.create((i*75) + 30, (i * 25) + 150, 'orangeBrick');
+                brick.body.immovable = true;
+                var brick2 = bricks.create((game.world.width-95) - (i*75), (i * 25) + 150, 'purpleBrick');
+                brick2.body.immovable = true;
+                if (i != 4 && i != 5) {
+                    var brick3 = bricks.create((i*75) + 30, 250, 'redBrick');
+                    brick3.body.immovable = true;
+                }
+                if (i != 4 && i != 5) {
+                    var brick4 = bricks.create((i*75) + 30, 275, 'cyanBrick');
+                    brick4.body.immovable = true;
+                }
+                var brick5 = bricks.create((i*75) + 30, 125, 'blueBrick');
+                brick5.body.immovable = true;
+                var brick6 = bricks.create((i*75) + 30, 100, 'pinkBrick');
+                brick6.body.immovable = true;
+            }
+        }
+    }
+    
+</script>
+
+</body>
+</html>
